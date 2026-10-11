@@ -1,0 +1,12 @@
+# ============================================================================
+# dsh-prompt-adapt — DSH bundle patch
+# ============================================================================
+# 把本插件挂载进 profile。安装方式（不要手动改 profile 的 patch 层）：
+#   dsh plugin --profile desktop add link:R:\dsh-prompt-adapt
+#
+# 本文件只会把插件插入 profile 的配置树；具体行为全部由 lib/index.js 决定。
+# ============================================================================
+
+- insert:
+    - id: dsh-prompt-adapt
+      name: dsh-prompt-adapt

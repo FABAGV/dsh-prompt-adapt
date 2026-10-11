@@ -1,0 +1,35 @@
+# 依赖（本仓库不带 node_modules，见 README「开发与测试」）
+node_modules/
+
+# 插件运行时会写这些，但那是 $DSH_HOME 下的事，仓库内不该出现
+plain/
+profile-history/
+cursor.json
+state.json
+
+# 凭据与本地配置 —— 绝不入库
+.credentials.yaml
+.env
+.env.*
+gh-token.txt
+*.pem
+*.key
+auth.json
+config.toml
+
+# 会话日志与语料（含真实对话原文，绝不入库）
+*.jsonl
+*.jsonl.zstd
+sessions/
+corpus/
+dump/
+
+# 日志与临时物
+*.log
+*.tmp
+*.bak
+
+# 本地探针与临时脚本
+_probe/
+pa-*.mjs
+*-probe.mjs

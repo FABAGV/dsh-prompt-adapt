@@ -1,0 +1,8 @@
+# 统一按 LF 入库（仓库里是 UTF-8 中文，混用换行会让 diff 整文件重写）
+* text=auto eol=lf
+
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
