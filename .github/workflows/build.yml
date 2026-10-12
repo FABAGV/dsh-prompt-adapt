@@ -1,0 +1,108 @@
+# 验证 + 发布。
+#
+# 为什么需要它：这个包不在 npm 上，用户拿到它只能靠 GitHub。所以"发一个版本"必须是
+# 一条命令能完成的事 —— 打 tag 推上去，这里跑测试、把 npm 包形状的 tgz 挂到 Release，
+# 于是 `install.ps1`、桌面端插件页、`dsh plugin add <url>` 三条路线都有一个**版本化、
+# 内容不会变**的地址可以指向（`refs/heads/main` 那种地址是会变的）。
+#
+# 测试依赖 `@deepseek-ai/cordis` / `@deepseek-ai/schemastery`：真实宿主下这两个包由 DSH
+# 装载时提供，CI 里没有 DSH，所以从 npm 装一份（两个包都已发布）。本地开发用
+# README「开发与测试」那节的 junction 代替。
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # 宿主在运行时提供的两个 peer：CI 里从 npm 装（都已发布）。
+      - name: 装宿主提供的 peer 依赖
+        run: npm install --no-save --no-package-lock @deepseek-ai/cordis@4 @deepseek-ai/schemastery@3
+
+      # parity 需要本机真实的会话语料当标尺（它在找不到标尺时**判失败而不是跳过**，
+      # 这是对的：CI 上没有语料就只能不跑，而不是假装比对通过）。
+      # inspect-signals / verify-incremental 是排障脚本，会读写真实 $DSH_HOME。
+      - name: 跑测试
+        run: |
+          set -e
+          for file in test/*.mjs; do
+            case "$file" in
+              test/parity.mjs|test/inspect-signals.mjs|test/verify-incremental.mjs) echo "跳过 $file"; continue ;;
+            esac
+            echo "== $file"
+            node "$file"
+          done
+
+  release:
+    name: 发版
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # 产物与 npm 发布的是同一个包形状（`files` 字段决定内容），
+      # 所以 asset 名字必须与 README / install.ps1 里写的约定一致：
+      #   dsh-prompt-adapt-<version>.tgz
+      - name: 打包
+        run: |
+          set -e
+          npm pack
+          ls -l ./*.tgz
+
+      - name: 挂到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh release create "$GITHUB_REF_NAME" ./*.tgz \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
+
+  publish-npm:
+    name: 发布到 npm（可选）
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write        # npm provenance（供应链可追溯）
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      # 没有配 NPM_TOKEN 就整段跳过 —— 本仓库的主线是 GitHub Release，
+      # 发布到 npm 只是"顺带解锁 `dsh plugin add dsh-prompt-adapt` 那条命令"。
+      - if: env.NPM_TOKEN != ''
+        uses: actions/checkout@v4
+      - if: env.NPM_TOKEN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - if: env.NPM_TOKEN != ''
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - if: env.NPM_TOKEN == ''
+        run: echo "未配置 NPM_TOKEN，跳过 npm 发布（GitHub Release 已经产出）"

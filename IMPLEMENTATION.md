@@ -615,12 +615,19 @@ R:\dsh-prompt-adapt\
 size = statSync(file).size
   ├─ size === offset            → 直接 continue（一个字节都不读）
   ├─ size <  offset            → 文件被截断/轮转：offset 归 0，明文缓存整体重写
-  └─ 否则                       → readFileSync 全文
-                                  scanZstdFrames(buffer)  ← 只做结构扫描，不解压任何 block
-                                  取 frame.end > offset 的帧 → 逐帧 zstdDecompressSync(slice, {maxWindowSize})
+  └─ 否则                       → readSync 只读 [offset, size)   ← v0.1.1：不再读全文
+                                  段首不是 zstd magic → warn + 退回从 0 全量扫（不猜）
+                                  scanZstdFrames(尾巴, maxFrames, baseOffset)
+                                    ← 只做结构扫描，不解压任何 block；
+                                      maxFrames = max(1, 本轮剩余预算)，扫描量也被预算封顶
+                                  取 frame.end > offset 的帧 → 逐帧 zstdDecompressSync(slice, {maxWindowSize, maxOutputLength})
                                   新帧明文 appendFileSync 到 plain/<hash>.jsonl
                                   offset = 最后一个新帧的 end
 ```
+
+> v0.1.1 之前这里是"`readFileSync` 全文 + 从字节 0 扫全部 block header，再过滤 `end > offset`"，
+> 每轮对每个有增长的文件都是 O(文件大小) 的读 + 走查。改动理由与实测见 §8.6；
+> 轮转起点（`cursor.rotor`）解决的是同一段里的"位置性饥饿"，见 `lib/sessions.js` 文件头。
 
 **"只解新帧"是怎么保证的**：`scanZstdFrames()` 只按 block header 跳过 payload，不做解压；
 只有 `frame.end > offset` 的帧才会进入 `decompressFrame()`。
@@ -1555,12 +1562,19 @@ export function isHallConfigured(value = PROMPT_HALL_URL) { … }
 没有保留策略。长期运行会缓慢堆积 —— 与 `dsh-whale-widget` 给 `.dshw-usage.json`
 做归档的做法不同，这里**没有**实现。
 
-### 8.6 扫描的读放大
+### 8.6 扫描的读放大 —— **已修（v0.1.1）**
 
-每轮扫描对**每个有增长的文件**做一次 `readFileSync` 全文件读取。
-`scanZstdFrames()` 不解压，但仍是 O(文件大小) 的字节读 + 结构走查。
-会话日志是 MB 级，可接受；若将来出现几百 MB 的单文件，这里会成为热点。
-**没有**实现"只读末尾 N 字节"的优化（那需要处理跨 buffer 的半帧）。
+原文：每轮扫描对**每个有增长的文件**做一次 `readFileSync` 全文件读取，
+`scanZstdFrames()` 不解压但仍是 O(文件大小) 的字节读 + 结构走查。
+
+现在：`entry.offset` 本身就是帧边界，所以增量轮只读 `[offset, size)` 这一段并从段首扫帧
+（段首不是 zstd magic 时退回全量扫并 warn），帧预算同时是结构扫描的上界
+（`scanZstdFrames(buffer, maxFrames, baseOffset)`），并且每轮从 `cursor.rotor`
+（上一轮第一个被预算跳过的文件）绕回，消除"排在后面的文件永远读不到"的位置性饥饿。
+实测 8 MiB / 4000 帧语料：一轮增量 **2.23 ms → 0.16 ms，读盘 8.00 MiB → 538 KiB**。
+
+仍然保留的读代价：`truncated`（文件被轮转/截断）与 `lostMemory`（内存里没有该文件的事件集）
+两条路径必须从 0 全量重扫 —— 那是重建，不是增量。
 
 ### 8.7 测试环境本身在动
 

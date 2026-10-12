@@ -9,32 +9,64 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 
 ## 安装
 
-```bash
-dsh plugin --profile <你的profile> add dsh-prompt-adapt
+先看结论，四条路线按"省事程度"排序：
+
+| 路线 | 怎么装 | 前置条件 | 实测耗时（本机，走镜像） |
+|---|---|---|---|
+| **A 一键脚本** | `.\install.ps1 -Profile desktop` | Windows + 仓库目录 | **3.1 s**（冷装，含 282 KB 下载） |
+| **B 桌面端插件页** | 粘贴下面那个 release 地址 | 桌面客户端 | 一次点击 + 一次粘贴 |
+| **C CLI** | `dsh plugin --profile web add <同一个地址>` | DSH CLI | 一次 pnpm 安装 |
+| D npm | `dsh plugin --profile <p> add dsh-prompt-adapt` | 包已发布到 npm（**尚未**） | — |
+
+### A. 一键脚本（推荐）
+
+```powershell
+.\install.ps1 -Profile desktop      # 或 web；不传则按 DSH_PROFILE → desktop → web 猜
 ```
 
-`<你的profile>` 填你实际在用的 profile 名：**CLI / `npx @deepseek-ai/dsh web` 用 `web`，
-官方桌面客户端用 `desktop`**。装完**重启 DSH**（插件在宿主启动时 `apply()` 一次）。
+没有本地副本时也能一行跑（`raw.githubusercontent.com` 同样走镜像）：
 
-⚠️ **那条命令需要本包已发布到 npm。** 截至撰写时**尚未发布**，所以现在它会报
-`ERR_PNPM_FETCH_404: dsh-prompt-adapt is not in the npm registry`。
-在那之前请用下面两种方式之一。
-
-**方式一：直接从 GitHub 装**
-
-```bash
-dsh plugin --profile <你的profile> add github:FABAGV/dsh-prompt-adapt
+```powershell
+& ([scriptblock]::Create((irm https://gh-proxy.com/https://raw.githubusercontent.com/FABAGV/dsh-prompt-adapt/main/install.ps1))) -Profile desktop
 ```
 
-**方式二：本地链接**（改自己的副本）
+脚本做四件事：**走镜像下载 → 用 DSH 自带的 pnpm 装进 profile → 把 `dsh-prompt-adapt` 登记进
+`dsh.profile.bundles` → 校验宿主入口与客户端半边都在**。`-Tag main` 装分支最新代码、
+`-Uninstall` 卸载（保留 `~/.dsh/prompt-adapt` 里的画像与自定义文本）、`-WhatIf` 只打印会做什么。
 
-```bash
-dsh plugin --profile <你的profile> add link:<本目录绝对路径>
+两个刻意的设计：
+
+- **以本地文件依赖安装**（`file:.dsh-packages/<包名>.tgz`），不把镜像 URL 写进
+  `package.json`/lockfile —— 镜像哪天挂了，不会连 `pnpm install` 都跑不起来；tgz 留在
+  profile 目录内，之后离线可重装。
+- **直接改 profile 文件**，所以桌面端（`dsh plugin` 会拒绝的那个 profile）也能装。
+
+### B. 桌面客户端（内置插件页）
+
+在插件页里填这个**发布产物地址**（版本化、内容不变）：
+
+```
+https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.1/dsh-prompt-adapt-0.1.1.tgz
 ```
 
-> ⚠️ **桌面客户端的 profile 由应用独占管理**，`dsh plugin` 会拒绝写入
-> （`profile "desktop" is managed exclusively by the Electron application`）。
-> 桌面端请用内置的插件管理界面装载。
+装完**刷新页面**（插件在宿主启动时 `apply()` 一次；桌面端热加载有时不重跑）。
+
+### C. CLI（`web` / `tui` 等非桌面 profile）
+
+```bash
+dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.1/dsh-prompt-adapt-0.1.1.tgz
+```
+
+**不要**用 `github:FABAGV/dsh-prompt-adapt`：这种 spec 形式下 pnpm 会先跑 `git ls-remote`，
+本机没有 git 就直接失败（与网络无关）；`dsh-prompt-adapt`（裸包名）则要等包发布到 npm。
+
+> ⚠️ **桌面客户端的 profile 由应用独占管理**：`dsh plugin --profile desktop …` 会被启动器
+> 直接拒绝（`profile "desktop" is managed exclusively by the Electron application`）。
+> 桌面端请用 A 或 B。
+
+> 国内网络实测：`github.com` / `codeload.github.com` 直连只有 **30–50 KB/s**；脚本按
+> `gh-proxy.com → ghfast.top → ghproxy.net → 直连` 依次回退，同一个 282 KB 的包
+> 直连 8.4 s、镜像 **0.9–2.5 s**。本地已有同版本 tgz 时会跳过下载（再装 0.9 s）。
 
 ### 它是不是一个真插件
 
@@ -139,7 +171,7 @@ dsh plugin --profile <你的profile> add link:<本目录绝对路径>
       autoRun: true
     scan:
       intervalMs: 120000       # 后台扫描间隔
-      maxFramesPerScan: 400    # 每轮最多解压多少帧
+      maxFramesPerScan: 400    # 每轮的帧预算（既限最多解压多少帧，也限结构扫描走多远）
     inject:
       budgetTokens: 1500       # 注入预算（估算 token）
       maxPinned: 10            # 最多置顶多少条
@@ -243,11 +275,15 @@ calibrate           147 通过 / 0 失败
 
 ## 已知限制
 
-- **`freeformAnswers`（「给了选项但你自己另说」）目前不可信**：判据依赖 `user/message`
-  事件的 `turn` 字段，而实测真实日志里该字段非空的有 **0 条**，位置约束整块是死代码。
-  这个数字偏高约一个数量级。（已在 `IMPLEMENTATION.md` 记录，待修。）
-- **索引可能长期不完整**：帧预算每轮 400 帧、按文件顺序先到先得，冷启动后要很多轮才追上，
-  而外观上与「没有新数据」一样。实测本机 216 个文件里一度有 100 个 `offset=0`。
+- **`freeformAnswers`（「给了选项但你自己另说」）此前不可信** —— **已修**：判据依赖
+  `user/message` 的 `turn` 字段，而实测真实日志里该字段非空的有 **0 条**（`user/message` 的
+  `data` 就是 message 本身，键是 `content/source/role/id`），所以位置约束整块是死代码。
+  现在 turn 由 `bySession()` 在会话级按事件顺序位置性推导（`turn/start` 可能落在更早的帧里，
+  所以不能只在单帧内推），`countFreeformAnswers` 自己还兜了一层。实测本机 14 个会话：
+  **4 → 1**，误计的 3 条全是「提问之后跨了 turn 边界才出现的新话题」。
+- **索引可能长期不完整** —— **已改**：帧预算过去按文件顺序先到先得，排在后面的文件一轮轮
+  读不到（实测 216 个文件里一度 100 个 `offset=0`，按 400 帧/轮要 130+ 轮才追上）。现在游标里
+  记轮转位置、每轮从上次收尾处继续，并且只从游标处读尾巴（不再每轮从头扫整个文件）。
 - **封印按文本精确匹配**：中文同义改写认不出来（实测相似度分不开同一条换说法与两条不同结论），
   所以改写过的封印条目会漏认 —— 由提示词那道概率性防线兜。
 - **多进程共用 `DSH_HOME` 时是「后写覆盖先写」**：整份状态由内存写出，
