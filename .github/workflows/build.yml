@@ -81,7 +81,7 @@ jobs:
             --verify-tag
 
   publish-npm:
-    name: 发布到 npm（暂缓：未配 NPM_TOKEN）
+    name: 发布到 npm
     needs: verify
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -91,9 +91,10 @@ jobs:
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      # 当前仓库**没有**配 NPM_TOKEN（作者无 npm 账号），所以这一段一直走最后那条 echo 跳过 ——
-      # 主线是上面的 GitHub Release。留着它是为了 fork：填一个 secret 再打 tag 就能发布，
-      # 发布之后 `dsh plugin add dsh-prompt-adapt` 与 npmmirror 镜像都会自动可用。
+      # 包已经发布在 npm 上：https://www.npmjs.com/package/dsh-prompt-adapt
+      # （首发 2026-10-14，之后 `dsh plugin add dsh-prompt-adapt` 与 npmmirror 镜像都已可用）。
+      # 这一段仍然是"仓库里配了 NPM_TOKEN secret 才会跑"：没配时走最后那条 echo 跳过，
+      # 主线（GitHub Release 产出 tgz）不受影响。想让打 tag 自动发版，就在 secrets 里配上它。
       - if: env.NPM_TOKEN != ''
         uses: actions/checkout@v4
       - if: env.NPM_TOKEN != ''

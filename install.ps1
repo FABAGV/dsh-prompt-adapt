@@ -4,7 +4,8 @@
 
     ── 为什么需要它 ────────────────────────────────────────────────────────
     三条"官方"路线各自卡在一个前置条件上：
-      · `dsh plugin --profile <p> add dsh-prompt-adapt`  → 包没发布到 npm，404；
+      · `dsh plugin --profile <p> add dsh-prompt-adapt`  → 已发布到 npm，这条现在能用
+        （走 `registry.npmmirror.com` 镜像；桌面 profile 除外，见下面第三条）；
       · `dsh plugin --profile <p> add github:FABAGV/...` → pnpm 会先跑 `git ls-remote`，
         本机没有 git 就直接失败（安装 github: spec 必须有 git）；
       · 桌面客户端（profile = desktop）由 Electron 独占，启动器里有一句

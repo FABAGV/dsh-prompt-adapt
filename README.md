@@ -16,12 +16,11 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 | **A 一键脚本** | `.\install.ps1 -Profile desktop` | Windows + 仓库目录 | **3.1 s**（冷装，含 282 KB 下载） |
 | **B 桌面端插件页** | 粘贴下面那个 release 地址 | 桌面客户端 | 一次点击 + 一次粘贴 |
 | **C CLI** | `dsh plugin --profile web add <同一个地址>` | DSH CLI | 一次 pnpm 安装 |
-| D npm（**暂不提供**） | `dsh plugin --profile <p> add dsh-prompt-adapt` | 需要包已发布到 npm | — |
+| D npm（**已发布**） | `dsh plugin --profile <p> add dsh-prompt-adapt` | 无 | 一次 pnpm 安装（走 `registry.npmmirror.com` 镜像） |
 
-> **D 路线为什么暂不提供**：这个包没有发布到 npm（作者账号原因），所以裸包名会 404。
-> 想走这条路的（它最省事，而且 `registry.npmmirror.com` 会自动镜像 → 国内最快）可以 fork：
-> [`.github/workflows/build.yml`](./.github/workflows/build.yml) 里的 `publish-npm` 任务已经写好，
-> 配一个 `NPM_TOKEN` secret、打个 tag 就会自动发布（带 provenance）。发布之后 D 与镜像都会自动可用。
+> **D 路线已经可用**：包发布在 npm 上 —— <https://www.npmjs.com/package/dsh-prompt-adapt>，
+> 裸包名不再 404，`registry.npmmirror.com` 会自动镜像，**国内这条最快**。
+> ⚠️ 与 C 路线同一个限制：桌面 profile 由应用独占管理，桌面端请走 A 或 B。
 
 ### A. 一键脚本（推荐）
 
@@ -63,7 +62,7 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
 ```
 
 **不要**用 `github:FABAGV/dsh-prompt-adapt`：这种 spec 形式下 pnpm 会先跑 `git ls-remote`，
-本机没有 git 就直接失败（与网络无关）；`dsh-prompt-adapt`（裸包名）则要等包发布到 npm。
+本机没有 git 就直接失败（与网络无关）；裸包名 `dsh-prompt-adapt` 现在已经可以直接用（见 D 路线）。
 
 > ⚠️ **桌面客户端的 profile 由应用独占管理**：`dsh plugin --profile desktop …` 会被启动器
 > 直接拒绝（`profile "desktop" is managed exclusively by the Electron application`）。
