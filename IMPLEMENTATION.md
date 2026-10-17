@@ -1526,19 +1526,20 @@ export function isHallConfigured(value = PROMPT_HALL_URL) { … }
 - `getState()` 增加 `effectiveSource`（`'customText' | 'profile'`）与 `contract: 1`
 - 导出 `API_PREFIX` 供客户端对齐，避免两边各写一份字面量
 
-### 8.2 真人发言判据有一处无法从日志消除的误差
+### 8.2 真人发言判据：消息级无法区分，**会话级可以**（v0.1.3 已修）
 
-`source.kind === 'user'` 是现有数据能给出的最好判据，但**它区分不了"人打的"与"另一个 agent 代打的"**。
+`source.kind === 'user'` 区分不了"人打的"与"另一个 agent 代打的"：父代理投递给
+子代理的 prompt 也走 `kind: 'user'`。
 
-实测证据：某会话里 `user/message` 的 `source.kind` 是 `'user'`，但内容是**画像生成器自己的 prompt**
-（父代理通过 `send_message` 把 prompt 投递给被委派的子代理）。也就是说**父代理代打的 prompt 也走 `kind: 'user'`**。
+**更正**：`session` 事件顶层有 `origin: 'subagent'`、`parentSession`、`delegationDepth`
+（实测形状：`{type:'session', id, createdAt, cwd, parentSession, origin, delegationDepth}`）。
+本机 235 个会话文件里 179 个是 `origin: 'subagent'`；188 条"真人消息"其实是委派 prompt。
 
-后果：当用户让 agent 去驱动另一个 agent 时，那些代打的 prompt 会被当成用户发言计入画像材料。
-日志里**没有**能区分这两者的字段（`agent-message` 是另一种 kind，但那不是这条路径）。
+修法：`normalizeInto()` 保留这三个字段，`scanner.bySession({ humanOnly: true })`
+过滤子代理会话；画像材料、四个信号、触发计数全部走它。界面点开单个会话的
+`getSessionSignals()` 仍用全量 `bySession()`，排障不受影响。
 
-**未做**：没有尝试用 `parentSession` / `delegationDepth` / `origin: 'subagent'` 这些 header 字段去过滤 ——
-那会误伤"用户真的在子代理会话里亲自说话"的情况。目前的取舍是**宁可多收**，
-并在 `IMPLEMENTATION.md` 这里写明。
+原判断"日志里没有能区分这两者的字段"是错的，原因是归一化时把事件顶层字段丢了。
 
 ### 8.3 判据 2 仍有残余不确定性
 
@@ -1592,6 +1593,54 @@ export function isHallConfigured(value = PROMPT_HALL_URL) { … }
 - 没有复制任何凭据、邮箱、IP、密钥进代码/注释/测试/本文件。
   本文档引用的真实数据只有：会话数量、事件类型分布、计数、错误码、选项 label 与用户原话片段
   （后两者是画像判据的必要例证，且不含凭据）。**IP 地址与域名已在引用时截断/删除。**
+
+### 8.9 v0.1.3：助手方向的第一批改动（P0 + 落账 + 试用位 + 换血）
+
+这一批的动机来自实测，不是设计偏好：
+
+- 本机 40 版画像，条目 26→103，注入恒为 22；v34 起新增 18 条、0 条在生成当版入注。
+  排序分数由模型自报的 confidence/引文数决定，老条目长期压住新生条目（A 线 242、
+  B/C 线 232、新生最好 231）—— **新生在算术上进不去**，不是模型没写。
+- 235 个会话文件里 179 个是 `origin: 'subagent'`；188 条"真人消息"其实是父代理写的
+  委派 prompt。它们既污染画像材料，也把"派子代理"算成用户活跃（实测触发 v41 的
+  `新增会话 4 >= 3` 就是派出去的两个子代理）。
+- 旧触发按"累计差"算：扫描补扫旧日志会被当成新增（10:49 一轮 2217 条事件 → 10:50
+  立刻生成 v40），而生成那 25–33 秒里到达的消息又会被下一次比较**永久跳过**。
+
+改法（每一处都有对应测试）：
+
+| 改动 | 位置 | 测试 |
+|---|---|---|
+| `session` 头保留 `origin/parentSession/delegationDepth`；`bySession({humanOnly})` **先按 sessionId 聚合再整会话判来源** | `lib/sessions.js` | `test/session-origin.mjs`、`test/p0-e2e.mjs` |
+| 画像材料/信号/触发全走 humanOnly；界面单会话明细仍全量 | `lib/index.js` | 同上 |
+| 触发改为"只数材料截止时刻之后的真人发言"（`materialCutoff`/`freshness`） | `lib/profile.js`、`lib/index.js` | `test/session-origin.mjs` |
+| 旧 state 迁移：第一次扫描只写入 `materialCutoff`（用上一版 `at` 近似），`humanMessages/sessions` 保持旧值 —— 首轮扫描受帧预算限制，拿部分语料算出的基线会比旧值更错；下一次成功生成按完整材料重算 | `lib/index.js` | `test/p0-e2e.mjs`（预置旧 state 524 条；迁移后不因负差死锁、也不写坏基线） |
+| 注入落账：每版 `injectedIds` + 累计次数写进 `state.injectionLedger`；`frozenCounts` 冻结"这一版落账前"的计数，保证试用位在同一版内稳定 | `lib/state.js`、`lib/index.js` | `test/injection-ledger.mjs`、`test/p0-e2e.mjs` |
+| 账本身份用 `generatedAt:version`（`clearProfile` 后版本号会从 1 重来，用 version 去重会丢整本账）；同一版中途封印/解封后**同步补记**新进集合的 id | `lib/state.js`、`lib/index.js` | `test/injection-ledger.mjs`（F/G 段）、`test/p0-e2e.mjs` |
+| 模式 2 不再自动生成画像（画像不进 prompt，生成了也是白烧）；`force`（手动）仍允许，但不记假账 | `lib/index.js` | `test/p0-e2e.mjs`（C 段） |
+| 新生试用位：每池 1 个，`count===0 && 引文≥2`，只保一版；**不传计数（null）= 关闭试用位**，`null` 与 `{}` 在签名里区分 | `lib/profile.js` | `test/trial-slot.mjs` |
+| `clearProfile()` 同时清空 `counts/frozenCounts/identity`：账按短 id 记，不清会让新结论继承旧计数、永远拿不到试用位 | `lib/index.js` | `test/mark-ledger.mjs` |
+| 换血上限：44 条后新增 ≤ 删除+合并，超出按分数从低到高拒绝；只拒新条目，不强制瘦身 | `lib/profile.js` | `test/profile-cap.mjs` |
+| 落账 × 处置动作端到端：生成 → 封印（新进集合补记）→ 解封（写回画像、账本不回退）→ 清空画像 | `lib/index.js`、`lib/state.js` | `test/mark-ledger.mjs` |
+
+**已知近似**（写在这里，避免被当成精确语义）：
+
+- 落账按条目 **id** 计。模型改写沿用旧 id、或把旧 id 给一条新结论时，计数会算到
+  "同一条"头上。更稳的键是规范化 claim，但那会改 `injectedIds` 的契约，本批没做。
+- 落账在**状态变化时**同步（生成成功、置顶/封印/删除/恢复），不在每次
+  `renderSection()` 里写：那是每一步都要跑的路径，必须有副作用为零。
+  所以语义是"这一版**曾经进过**注入集合"，不是"每一步都在里面"。同一版中途
+  被挤出的条目会保留这次计数（它至少进过一版），账本是**并集**、只增不减。
+- `clearProfile()` 会清空账本：画像是用户主动清掉的，旧 id 的交付历史没有意义，
+  而短 id 复用会让新结论继承旧计数（这是 1(c) 审查发现的问题）。
+- 旧 state 迁移用 `lastGeneration.at` 当截止时刻的近似：升级那一刻在"上一次生成结束"
+  与"现在"之间到达的消息里，只有时间戳 > at 的会被算作新增；生成窗口那几秒的
+  损失只发生在升级这一次。
+- 换血上限只停止净增长，不强制瘦身：旧画像超过 44 条时保持原大小（瘦身需要档案
+  层配合，不能静默删用户数据）。
+- 试用位按 `id` 判"新生"。同一 id 被模型复用给不同结论时会误判成"已交付"。
+- 补账只记**当前这一版**的注入计划（不是历史版本）：当前没进计划的旧条目仍然是 0，
+  所以"从未交付"的统计不会被补账抹平。
 
 ---
 
