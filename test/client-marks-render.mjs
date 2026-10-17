@@ -111,7 +111,9 @@ const HOST_STATE = {
 	copiedSnapshot: { text: null, at: null, profileVersion: null, entries: null, algorithmVersion: null },
 	lastGeneration: { at: 1760000000000, humanMessages: 148, sessions: 9 },
 	lastSignals: { totals: { sessions: 9, humanMessages: 148, delegateRuns: 3, longTools: 5, repeatFailures: 2, freeformAnswers: 4, unpairedToolResults: 0 } },
-	lastRun: { at: 1760000000000, ok: true, reason: '', error: null, spuriousRate: 0, diff: null },
+	lastRun: { at: 1760000000000, ok: true, reason: '', error: null, spuriousRate: 0, diff: null, warnings: ['画像已达 44 条上限，本轮拒绝 9 条净新增（n9）。'] },
+	injectionLedger: { version: 7, ids: ['a1', 'p1'], counts: { a1: 2, p1: 1 }, lastAt: 1760000000000 },
+	workingNotes: [{ text: '本机插件安装在 R:/dsh-prompt-adapt，配置在 ~/.dsh/prompt-adapt。', at: 1760000000000 }],
 	effectiveText: '',
 	injectedText: '以下是这个用户已经确认的协作画像，请在本次会话中遵守：\n\n【稳定特质】\n- ' + CLAIM_A + '\n',
 	injection: {
@@ -381,6 +383,21 @@ const props = {
 await face.actions.refresh()
 let tree = mini.render(registered.component, props)
 let text = treeText(tree)
+
+check('生成警告可见（含换血上限拒绝数）',
+	text.includes(translate('prompt-adapt', 'genWarnings', { n: 1 })) &&
+		text.includes('拒绝 9 条净新增'))
+check('账本提示可见（从未注入条数）',
+	text.includes(translate('prompt-adapt', 'ledgerHint', { n: 4, v: 7 })))
+check('账本徽标：已注入版本数',
+	text.includes(translate('prompt-adapt', 'ledgerSeen', { n: 2 })) &&
+		text.includes(translate('prompt-adapt', 'ledgerSeen', { n: 1 })))
+check('账本徽标：从未注入至少 4 条',
+	(text.match(new RegExp(translate('prompt-adapt', 'ledgerNever'), 'g')) || []).length >= 4)
+check('工作笔记可见（不占画像槽位）',
+	text.includes(translate('prompt-adapt', 'workingNotesHeading', { n: 1 })) &&
+		text.includes(translate('prompt-adapt', 'workingNotesHint')) &&
+		text.includes('本机插件安装在'))
 
 console.log('')
 console.log('='.repeat(72))

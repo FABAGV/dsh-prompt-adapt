@@ -1642,6 +1642,39 @@ export function isHallConfigured(value = PROMPT_HALL_URL) { … }
 - 补账只记**当前这一版**的注入计划（不是历史版本）：当前没进计划的旧条目仍然是 0，
   所以"从未交付"的统计不会被补账抹平。
 
+### 8.10 工作笔记与"拒绝可见"（v0.1.3 第二批）
+
+**问题**：44 条上限只停止净增长；画像里混进项目/工具类事实（旧画像里 17 条带项目
+关键词、至少 3 条是本插件自己的设计需求），占着注入槽位，还会把"用户在做插件"
+再喂回生成器。同时，换血上限的拒绝结果只写在 `lastRun.warnings`，界面不读。
+
+**改动**
+
+- 生成契约新增**可选**字段 `projectNotes: string[]`：项目/工具/路径/账号/仓库类事实
+  写这里，不进 `entries`；每轮最多 3 条，单条 4–300 字，去重。提示词里明确
+  "不占画像槽位"。
+- `normalizeProfile()` 把 `projectNotes` 规整后挂在返回的画像对象上；
+  `runProfileGeneration()` 合并进 `state.workingNotes`（`{text, at}`，上限 50），
+  随后 `delete result.profile.projectNotes`，不写进 profile-history。
+- `state.workingNotes` 在 `emptyState()` 里有形状，载入时做数组/去重/长度兜底；
+  `appendWorkingNotes()` 负责合并；`migrateProjectEntries()` 只匹配 3 条铁证
+  （`模式 1/2`、`画像文本`、`画像归纳器`），升级后第一次 `apply()` 执行一次，
+  文本保留在笔记里，**不是删除**；`workingNotesMigrated` 保证幂等。
+- `/state` 新增 `workingNotes`；界面在 ③ 下面单列「工作笔记」，并新增：
+  - ② 上方的**本次生成警告**折叠条（含换血上限拒绝数）；
+  - ③ 每条条目的账本徽标「已注入 N 版 / 从未注入」；
+  - ③ 标题下的「账本 vX：N 条从未进过系统提示」。
+- 这些都不参与注入：`planProfileInjection()` 只读 `profile.entries`；工作笔记
+  既不占 44 条槽位，也不进预算。
+
+**测试**：`test/working-notes.mjs`（21 条：合并/上限/迁移幂等/规范化/提示词/载入兜底）、
+`test/client-marks-render.mjs` 新增 5 条（警告/账本提示/两种徽标/工作笔记），全套
+22 套 923 条断言绿。
+
+**已知限制**：工作笔记不自动注入（项目归属无法从 system section 拿到会话 cwd）；
+模型仍可能无视提示词把项目事实写进 `entries`，那部分会占槽位；迁移只认 3 条铁证，
+其余项目条目要用户手动封印/后续再做归档。
+
 ---
 
 ## 九、我运行过的命令
