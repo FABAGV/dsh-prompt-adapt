@@ -50,7 +50,7 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 在插件页里填这个**发布产物地址**（版本化、内容不变）：
 
 ```
-https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.1/dsh-prompt-adapt-0.1.1.tgz
+https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.3/dsh-prompt-adapt-0.1.3.tgz
 ```
 
 装完**刷新页面**（插件在宿主启动时 `apply()` 一次；桌面端热加载有时不重跑）。
@@ -58,7 +58,7 @@ https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.1/dsh-prompt-a
 ### C. CLI（`web` / `tui` 等非桌面 profile）
 
 ```bash
-dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.1/dsh-prompt-adapt-0.1.1.tgz
+dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.3/dsh-prompt-adapt-0.1.3.tgz
 ```
 
 **不要**用 `github:FABAGV/dsh-prompt-adapt`：这种 spec 形式下 pnpm 会先跑 `git ls-remote`，
