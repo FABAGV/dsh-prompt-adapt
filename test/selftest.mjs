@@ -127,23 +127,27 @@ console.log('='.repeat(72))
   check('首 4 字节等于 ZSTD magic', buffer.readUInt32LE(0) === ZSTD_MAGIC,
     `0x${buffer.readUInt32LE(0).toString(16)}`)
 
-  // 关键回归：原生 API 遇到多帧只解第一帧 → 必须自己切
-  const zlib = (await import('node:zlib')).default
+  // 关键回归：旧的 Node 原生 API 遇到多帧只解第一帧 → 必须自己切。
+  // ⚠️ 这个行为随 Node 小版本变（实测 24.21 只解第一帧，24.22 会解出全部帧）。
+  //    插件不依赖"只解第一帧"，所以断言允许两种结果；真正的不变式是下面
+  //    「逐帧解压覆盖整个文件」与「scanZstdFrames 找齐所有帧」。
   const naive = zlib.zstdDecompressSync(buffer).toString('utf8')
   const frame0 = zlib
     .zstdDecompressSync(buffer.subarray(frames[0].start, frames[0].end), { maxWindowSize: 64 << 20 })
     .toString('utf8')
-  check('原生 zstdDecompressSync 对多帧只返回第一帧（这正是必须自己切帧的原因）',
-    naive.length === frame0.length,
-    `原生 ${naive.length} 字节 = 第一帧 ${frame0.length} 字节，而全文件有 ${frames.length} 帧`)
 
   let totalLines = 0
+  let totalChars = 0
   for (const frame of frames) {
     const text = zlib
       .zstdDecompressSync(buffer.subarray(frame.start, frame.end), { maxWindowSize: 64 << 20 })
       .toString('utf8')
+    totalChars += text.length
     totalLines += text.split('\n').filter(l => l.trim()).length
   }
+  check('原生 zstdDecompressSync 的多帧行为可解释（只解第一帧或全解；切帧仍然必要）',
+    naive.length === frame0.length || naive.length === totalChars,
+    `原生 ${naive.length} 字节 / 第一帧 ${frame0.length} / 全部 ${totalChars}（${frames.length} 帧）`)
   check('逐帧解压拿到的事件数远多于原生 API 的结果', totalLines > 1,
     `${frames.length} 帧 → ${totalLines} 行`)
 }
