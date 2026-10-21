@@ -608,6 +608,85 @@ console.log('='.repeat(72))
 
 console.log('')
 console.log('='.repeat(72))
+console.log('7. “上次生成”三态 + 首跑进度（不把“未触发”写成“失败”）')
+console.log('='.repeat(72))
+{
+	// 三态：`lastRun.ok` 是 true / false / null。null 表示“没到阈值”，不是失败。
+	// 早先按 `ok ? 成功 : 失败` 渲染，首跑用户会看到“失败 · 原因：未达阈值”，
+	// 误以为插件坏了 —— 这条断言就是防止它退回去。
+	apiState = JSON.parse(JSON.stringify(HOST_STATE))
+	apiState.lastRun = {
+		at: 1760000000000,
+		ok: null,
+		reason: '未达阈值（发言 +3/12，会话 +1/3）',
+		error: null,
+		spuriousRate: 0,
+		diff: null,
+	}
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('ok=null 显示「未触发」而不是「失败」', text.includes('未触发') && !text.includes('失败 ·'),
+		JSON.stringify({ none: text.includes('未触发'), fail: text.includes('失败 ·') }))
+	check('未触发时明确说“这是正常状态，不是出错”', text.includes('这是正常状态，不是出错'))
+
+	apiState.lastRun.ok = false
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('ok=false 仍然显示「失败」（真失败不能被洗白）', text.includes('失败 ·'))
+
+	// 首跑：没有画像 + 宿主给了 trigger → 必须说清“还差几条”，而不是只说“攒够发言”。
+	apiState = JSON.parse(JSON.stringify(HOST_STATE))
+	apiState.profile = null
+	apiState.entryMarks = []
+	apiState.injection = { injectedIds: [], injectedByCategory: null, omitted: 0 }
+	apiState.trigger = {
+		autoRun: true,
+		mode: 'auto',
+		triggerUserMessages: 12,
+		triggerNewSessions: 3,
+		humanMessages: 5,
+		sessions: 2,
+		scanned: true,
+		hasProfile: false,
+		generatedAt: null,
+	}
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('首跑显示标题与精确进度（5/12，还差 7）',
+		text.includes('第一次使用：画像还没生成') && text.includes('已收集 5 条，还差 7 条'),
+		JSON.stringify({ title: text.includes('第一次使用'), progress: text.includes('还差 7 条') }))
+	check('首跑告诉用户生成后能做什么', text.includes('每条都可以置顶 / 封印 / 删除'))
+
+	apiState.trigger.autoRun = false
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('autoRun=false 时不再承诺“会自动生成”，改为让人点重新生成',
+		text.includes('自动生成已关闭') && !text.includes('还差 7 条'))
+
+	apiState.trigger.autoRun = true
+	apiState.mode = 'custom'
+	apiState.trigger.mode = 'custom'
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('模式 2 下说明“画像不会自动生成”（与硬规则一致）',
+		text.includes('当前是模式 2（自定义），画像不会自动生成'))
+
+	// 老宿主没有 trigger 字段：整块不出现，也不报错（不猜、不编进度）。
+	apiState = JSON.parse(JSON.stringify(HOST_STATE))
+	delete apiState.trigger
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('老宿主没有 trigger 时首跑块整块不显示', !text.includes('第一次使用：画像还没生成'))
+}
+
+console.log('')
+console.log('='.repeat(72))
 console.log(`结果：${pass} 通过 / ${fail} 失败`)
 console.log('='.repeat(72))
 process.exit(fail === 0 ? 0 : 1)

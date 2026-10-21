@@ -31,7 +31,7 @@ param(
     [string]$Profile,
 
     # GitHub release tag（默认桶里那个）；`main` = 直接用分支归档，不依赖 release
-    [string]$Tag = 'v0.1.3',
+    [string]$Tag = 'v0.1.4',
 
     # 下载通道：auto 依次尝试 ghproxy → ghfast → ghproxynet → 直连
     [ValidateSet('auto', 'ghproxy', 'ghfast', 'ghproxynet', 'direct')]

@@ -50,7 +50,7 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 在插件页里填这个**发布产物地址**（版本化、内容不变）：
 
 ```
-https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.3/dsh-prompt-adapt-0.1.3.tgz
+https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.4/dsh-prompt-adapt-0.1.4.tgz
 ```
 
 装完**刷新页面**（插件在宿主启动时 `apply()` 一次；桌面端热加载有时不重跑）。
@@ -58,7 +58,7 @@ https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.3/dsh-prompt-a
 ### C. CLI（`web` / `tui` 等非桌面 profile）
 
 ```bash
-dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.3/dsh-prompt-adapt-0.1.3.tgz
+dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.4/dsh-prompt-adapt-0.1.4.tgz
 ```
 
 **不要**用 `github:FABAGV/dsh-prompt-adapt`：这种 spec 形式下 pnpm 会先跑 `git ls-remote`，
@@ -127,6 +127,18 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
 - **每条条目的账本徽标**：「已注入 N 版」/「从未注入」，跨版本累计 —— 直接回答
   "这条到底有没有进过系统提示"。
 - **工作笔记**：项目/工具/路径类事实单独一块，不占画像槽位，见下一节。
+
+### 第一次打开时（还没有画像）
+
+界面不会只写一句"攒够发言后会自动生成"，而是给出**可执行的进度**（0.1.4 起）：
+
+- 第一轮扫描还没跑完时写「正在读取本机会话记录（只读）…」，不把"还没数"说成"没有发言"；
+- 扫描完成后写「首版画像需要累计 12 条真人发言（已收集 5 条，还差 7 条）」——
+  阈值与计数都来自宿主，界面不自己编；
+- 如果 `profile.autoRun=false`，或当前生效的是模式 2，会**直说不会自动生成**，
+  并把用户的下一步指向「重新生成」/ 切回模式 1；
+- 「上次生成」是**三态**：**成功 / 失败 / 未触发**。未触发 = 没到阈值，是正常状态，
+  界面上会明确写"不是出错"——以前它被渲染成"失败"，是这一版修掉的 UX 缺陷。
 
 ### 置顶 / 封印 / 删除的区别
 
@@ -309,19 +321,30 @@ node tools/calibrate.mjs          # 与宿主真实路由的集成自检
 ```
 parity              PASS —— 230 个文件 / 71180 帧与宿主实现逐帧一致（不一致 0）
 selftest            142 通过 / 0 失败
-httptest            53 通过 / 0 失败
+httptest            54 通过 / 0 失败
 loadtest            44 通过 / 0 失败
 state-hardening     33 通过 / 0 失败
 extract-bugfix      12 通过 / 0 失败
 profile-delta-guard 22 通过 / 0 失败
 inject-budget       54 通过 / 0 失败
 marks-guard         70 通过 / 0 失败
-client-marks-render 40 通过 / 0 失败
+client-marks-render 53 通过 / 0 失败
 calibrate           147 通过 / 0 失败
 ```
 
 设计意图、接口查证记录、以及**已知的未完成/不确定项**见
 [IMPLEMENTATION.md](./IMPLEMENTATION.md) 与 [UI-IMPLEMENTATION.md](./UI-IMPLEMENTATION.md)。
+
+## 排障
+
+| 现象 | 先看哪里 / 怎么办 |
+|---|---|
+| 一直没有画像 | 模式 1 卡片里的**首跑进度**：它写着已收集多少条、还差多少条。首版要累计 `profile.triggerUserMessages`（默认 12）条真人发言；模式 2 生效或 `autoRun=false` 时不会自动生成。 |
+| 「上次生成」显示**未触发** | 正常状态：这次检查没到阈值，什么都没做。下面那行 `原因` 里有 `发言 +3/12，会话 +1/3` 这样的实数。 |
+| 「上次生成」显示**失败** | 看同一张卡里的 `原因` 与错误行；常见原因是宿主 provider/model 不可用、超时（`profile.timeoutMs`）、或输出被 `maxTokens` 截断。 |
+| 设置页显示「未连接宿主」 | 先确认插件装进了**当前 profile**；桌面端装完要**刷新页面**。再确认宿主 HTTP 路由前缀是 `/dsh-prompt-adapt/api`（界面每次请求都带这个前缀）。 |
+| 画像更新了，但界面没变 | 生成在后台跑，界面每 3 秒轮询一次；还在跑时按钮显示「生成中…」。超过 5 分钟仍未更新，看 `lastRun.error`。 |
+| 删除的条目又回来了 | 这是设计：**删除**不禁止模型重新归纳；要永久挡住请用**封印**。 |
 
 ## 已知限制
 
