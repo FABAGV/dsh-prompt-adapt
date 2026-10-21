@@ -15,6 +15,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { SessionScanner, listSessionFiles } from '../lib/sessions.js'
 import { scanZstdFrames, ZSTD_MAGIC } from '../lib/frames.js'
 import { computeAllSignals, computeSessionSignals, isHumanMessage } from '../lib/signals.js'
@@ -34,7 +35,7 @@ import { PROMPT_HALL_URL } from '../lib/hall.js'
 import { resolveConfig } from '../lib/index.js'
 
 const DSH_HOME = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
-const SESSIONS_ROOT = path.join(DSH_HOME, 'sessions')
+let SESSIONS_ROOT = path.join(DSH_HOME, 'sessions')
 const log = { debug() {}, info() {}, warn() {}, error() {} }
 
 let pass = 0
@@ -52,12 +53,63 @@ function check(label, condition, detail = '') {
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-adapt-test-'))
 const cursorPath = path.join(tmpRoot, 'cursor.json')
 
+/**
+ * 没有真实会话日志时（CI、新机器）生成一份**结构真实**的合成语料。
+ *
+ * 为什么不是"没语料就跳过"：这个文件的前五节测的正是帧扫描/增量游标/信号统计，
+ * 跳过等于把大半个测试静默删掉。合成语料能覆盖同样的代码路径，只是数据是造的 ——
+ * 所以会**明确打印**"本次用的是合成语料"，不伪装成真实数据。
+ *
+ * 目录结构与会话日志格式照抄 `tools/test-entry.mjs` 与真实 v4 日志：
+ *   <root>/<project>/<session>/session.v4.jsonl.zstd，每帧一段独立 zstd。
+ */
+function writeSyntheticSessions(root) {
+  const compress = (lines) =>
+    zlib.zstdCompressSync(Buffer.from(lines.map(line => JSON.stringify(line)).join('\n') + '\n', 'utf8'))
+  const at = Date.now() - 3_600_000
+  const header = (id) => ({ type: 'session', version: 4, id, createdAt: at - 60_000, cwd: root })
+  const human = (seq, time, text, kind = 'user') => ({
+    type: 'user/message',
+    seq,
+    time,
+    data: { content: [{ type: 'text', text }], source: { kind } },
+  })
+  const write = (project, id, frames) => {
+    const dir = path.join(root, project, id)
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'session.v4.jsonl.zstd')
+    for (const lines of frames) fs.appendFileSync(file, compress(lines))
+  }
+
+  // 会话 A：3 帧，含一条非真人来源的 user/message（让 source.kind 分布 > 1）
+  write('synthetic-project', 'session-a', [
+    [header('session-a'), human(1, at + 1000, '第一个问题'), human(2, at + 2000, '子代理委派', 'subagent')],
+    [human(3, at + 3000, '继续做'), human(4, at + 4000, '换个做法')],
+    [human(5, at + 5000, '谢谢')],
+  ])
+  // 会话 B：2 帧（保证 `files[0]` 不管取到哪个都是多帧文件）
+  write('synthetic-project', 'session-b', [
+    [header('session-b'), human(1, at + 1500, '另一个会话'), human(2, at + 2500, '第二句')],
+    [human(3, at + 3500, '第三句')],
+  ])
+}
+
+let files = listSessionFiles(SESSIONS_ROOT)
+let usedSynthetic = false
+if (files.length === 0) {
+  const realRoot = SESSIONS_ROOT
+  SESSIONS_ROOT = path.join(tmpRoot, 'synthetic-sessions')
+  writeSyntheticSessions(SESSIONS_ROOT)
+  files = listSessionFiles(SESSIONS_ROOT)
+  usedSynthetic = true
+  console.log(`没有真实会话日志（${realRoot} 为空）→ 本次用合成语料（${files.length} 个文件）`)
+}
+
 console.log('='.repeat(72))
 console.log('1. 帧扫描与解压')
 console.log('='.repeat(72))
 {
-  const files = listSessionFiles(SESSIONS_ROOT)
-  check('发现会话日志文件', files.length > 0, `${files.length} 个`)
+  check('发现会话日志文件', files.length > 0, `${files.length} 个${usedSynthetic ? '（合成）' : ''}`)
 
   const multi = files.find(f => f.size > 60000) ?? files[0]
   const buffer = fs.readFileSync(multi.file)
