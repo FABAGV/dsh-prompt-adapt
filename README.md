@@ -21,6 +21,9 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 > **D 路线已经可用**：包发布在 npm 上 —— <https://www.npmjs.com/package/dsh-prompt-adapt>，
 > 裸包名不再 404，`registry.npmmirror.com` 会自动镜像，**国内这条最快**。
 > ⚠️ 与 C 路线同一个限制：桌面 profile 由应用独占管理，桌面端请走 A 或 B。
+> ⚠️ **npm 镜像同步新版本会滞后几分钟到几小时**：刚发版时 `dsh plugin add dsh-prompt-adapt`
+> 可能仍装到旧版。想立刻拿到当前版本，用 A/B/C（Release 资产）或在安装后确认
+> `node_modules/dsh-prompt-adapt/package.json` 的 `version`。
 
 ### A. 一键脚本（推荐）
 
