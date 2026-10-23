@@ -52,7 +52,13 @@ function buildContext() {
     },
   })
   mod.default.apply(root, { logLevel: 'error', scan: { scanOnStart: false } })
-  return { root, registered }
+  // 插件在 apply 里注册了 webserver/index-inject 的结构化行；桌面端就是靠它把
+  // `__DSH_PROMPT_ADAPT__.token` 交给页面的。这里主动 emit 一次，既验证行存在，
+  // 也拿到本次 apply 生成的 token 供后面的凭据通道测试使用。
+  const table = []
+  if (typeof root.emit === 'function') root.emit('webserver/index-inject', table)
+  const authRow = table.find(row => row && row.kind === 'global' && row.name === '__DSH_PROMPT_ADAPT__')
+  return { root, registered, table, authToken: authRow?.value?.token }
 }
 
 /** 起一个真 HTTP server，只挂插件注册的那条 prefix 路由。 */
@@ -74,7 +80,7 @@ async function startServer(route) {
   return { server, port, seen, close: () => new Promise(r => server.close(r)) }
 }
 
-const { registered } = buildContext()
+const { registered, table: indexInjections, authToken } = buildContext()
 const { port, seen, close } = await startServer(registered[0])
 
 /** 真实监听地址 —— Host/Origin 都用它拼，绝不硬编码端口。 */
@@ -168,6 +174,77 @@ console.log('='.repeat(72))
     seen.at(-1)?.host === AUTHORITY, `host=${seen.at(-1)?.host}`)
   check('(b) handler 收到的 Origin 就是我们发的那一个',
     seen.at(-1)?.origin === SAME_ORIGIN, `origin=${seen.at(-1)?.origin}`)
+}
+
+console.log('')
+console.log('='.repeat(72))
+console.log('B2. 桌面端：index-inject 凭据 + CORS 预检（跨源设置页）')
+console.log('='.repeat(72))
+{
+  const authRow = indexInjections.find(
+    row => row && row.kind === 'global' && row.name === '__DSH_PROMPT_ADAPT__',
+  )
+  check('(b2) apply 时注册了 __DSH_PROMPT_ADAPT__ 的 global 注入行', !!authRow)
+  check('(b2) 注入行里有非空 token',
+    typeof authToken === 'string' && authToken.length >= 16, `len=${authToken?.length ?? 0}`)
+
+  const preflight = await raw({
+    method: 'OPTIONS',
+    path: '/state',
+    headers: {
+      host: AUTHORITY,
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'cors',
+      'access-control-request-method': 'GET',
+      'access-control-request-headers': 'x-dsh-prompt-adapt-token',
+    },
+  })
+  check('(b2) 桌面端 CORS 预检 → 204（不能先被信任栅栏 403）',
+    preflight.status === 204, `status=${preflight.status}`)
+  check('(b2) 预检带 Access-Control-Allow-Origin: *',
+    preflight.headers['access-control-allow-origin'] === '*',
+    String(preflight.headers['access-control-allow-origin']))
+  check('(b2) 预检允许 token 头',
+    String(preflight.headers['access-control-allow-headers'] || '').includes('x-dsh-prompt-adapt-token'))
+
+  const desktop = await raw({
+    path: '/state',
+    headers: {
+      host: AUTHORITY,
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'cors',
+      'x-dsh-prompt-adapt-token': authToken,
+    },
+  })
+  check('(b2) 带正确 token 的跨源 GET /state → 200', desktop.status === 200,
+    `status=${desktop.status} error=${desktop.json?.error}`)
+  check('(b2) 200 响应也带 CORS 头（浏览器能读 body）',
+    desktop.headers['access-control-allow-origin'] === '*')
+
+  const noToken = await raw({
+    path: '/state',
+    headers: {
+      host: AUTHORITY,
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'cors',
+    },
+  })
+  check('(b2) 没有 token 的跨源请求仍然 → 403', noToken.status === 403, `status=${noToken.status}`)
+
+  const badToken = await raw({
+    path: '/state',
+    headers: {
+      host: AUTHORITY,
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'cors',
+      'x-dsh-prompt-adapt-token': 'definitely-wrong',
+    },
+  })
+  check('(b2) 错误 token → 403', badToken.status === 403, `status=${badToken.status}`)
 }
 
 console.log('')

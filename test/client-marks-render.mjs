@@ -128,6 +128,8 @@ const HOST_STATE = {
 		overBudget: false,
 		annotation: '（本次注入 2/6 条）',
 	},
+	// 画像饱和提示的输入（真实宿主 0.1.4+ 才有的字段；老宿主没有它就不显示）。
+	profileCapacity: { entries: 6, softCap: 44, saturated: true, zeroChangeStreak: 2 },
 	running: false,
 }
 
@@ -394,6 +396,9 @@ check('账本徽标：已注入版本数',
 		text.includes(translate('prompt-adapt', 'ledgerSeen', { n: 1 })))
 check('账本徽标：从未注入至少 4 条',
 	(text.match(new RegExp(translate('prompt-adapt', 'ledgerNever'), 'g')) || []).length >= 4)
+check('画像饱和提示可见（增长上限 + 连续 0 变更）',
+	text.includes(translate('prompt-adapt', 'autoSaturated', { n: 6 })) &&
+		text.includes(translate('prompt-adapt', 'autoSaturatedStreak', { n: 2 })))
 check('工作笔记可见（不占画像槽位）',
 	text.includes(translate('prompt-adapt', 'workingNotesHeading', { n: 1 })) &&
 		text.includes(translate('prompt-adapt', 'workingNotesHint')) &&
@@ -565,6 +570,31 @@ console.log('='.repeat(72))
 	check('完整画像与注入区照旧渲染（老宿主仍可用）', text.includes('稳定特质') && text.includes('实际注入的系统提示'))
 	check('③ 区的三个按钮照旧在（宿主不支持时点下去会得到可读错误）',
 		findAll(tree, 'button').some(button => collectText(button).join('') === '封印'))
+}
+
+console.log('')
+console.log('='.repeat(72))
+console.log('5.1 上次生成的状态文案：ok:null 是"未生成"，不是"失败"')
+console.log('='.repeat(72))
+{
+	apiState = JSON.parse(JSON.stringify(HOST_STATE))
+	apiState.lastRun = {
+		at: Date.now(),
+		ok: null,
+		reason: '未达阈值（发言 +0/12，会话 +0/3）',
+		error: null,
+		spuriousRate: 0,
+		diff: null,
+		material: null,
+		warnings: [],
+	}
+	await face.actions.refresh()
+	tree = mini.render(registered.component, props)
+	text = treeText(tree)
+	check('ok:null 显示「未生成」', text.includes(translate('prompt-adapt', 'lastRunSkipped')),
+		text.slice(-200))
+	check('ok:null 不显示「失败」', !text.includes(translate('prompt-adapt', 'lastRunFail') + ' ·'))
+	check('跳过原因仍然可见', text.includes('未达阈值'))
 }
 
 console.log('')

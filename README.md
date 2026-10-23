@@ -191,6 +191,16 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
 改写沿用旧 id 不受影响；旧画像已经超过 44 条时**不强制瘦身**（那需要档案层，
 不能静默删用户数据），只停止继续增长。
 
+### 饱和守卫
+
+画像达到软上限后，如果**连续两轮**生成都是 0 新增 / 0 删除 / 0 改写，自动生成会
+暂停并在 `lastRun.reason` 写明原因 —— 再跑一次也不会改变任何东西，只会白烧一次
+LLM 调用（本机实测 v44–v47 连续 4 轮 0 变更仍按 12 条/3 会话触发）。设置页在
+模式 1 卡片里显示“画像已达增长上限（当前 N 条）”。
+
+用户删除 / 封印 / 取消置顶后，`zeroChangeStreak` 清零，自动生成重新尝试；
+手动「重新生成」不受守卫限制。
+
 ### 工作笔记（项目事实不占画像槽位）
 
 画像条目只写**用户本人**的稳定特质/偏好/纪律；项目、工具、路径、账号、仓库类事实
@@ -291,6 +301,8 @@ node test/parity.mjs              # 帧扫描 vs 宿主自己的实现，逐帧�
 node test/selftest.mjs            # 核心不变式（差量契约、截断抢救、删除守卫）
 node test/loadtest.mjs            # 真实 cordis Context 上跑 apply()
 node test/httptest.mjs            # 真 HTTP server + fetch 打全部端点
+node test/http-trust.mjs          # 来源栅栏 + 桌面端 token/CORS 预检
+node test/saturation-guard.mjs    # 画像饱和守卫与 zeroChangeStreak
 node test/state-hardening.mjs     # 落盘原子性、损坏文件留档、类型兜底
 node test/inject-budget.mjs       # 预算分配与极端场景
 node test/marks-guard.mjs         # 置顶/封印/删除的语义与跨版本效果
@@ -310,6 +322,8 @@ node tools/calibrate.mjs          # 与宿主真实路由的集成自检
 parity              PASS —— 230 个文件 / 71180 帧与宿主实现逐帧一致（不一致 0）
 selftest            142 通过 / 0 失败
 httptest            53 通过 / 0 失败
+http-trust          50 通过 / 0 失败
+saturation-guard    15 通过 / 0 失败
 loadtest            44 通过 / 0 失败
 state-hardening     33 通过 / 0 失败
 extract-bugfix      12 通过 / 0 失败

@@ -398,16 +398,33 @@ const disposer = webServer.register({ kind: 'prefix', path: API_PREFIX, handler 
 ```
 宿主 `markCopied(text, extra)` 会把 `entries` 与 `algorithmVersion` 一起落进 `state.copiedSnapshot`，所以**跨浏览器/多客户端的精确比较也已经可用**。
 
-### 3.4 桌面端（Electron）的跨源问题 —— 这一项仍悬着
+### 3.4 桌面端（Electron）的跨源问题 —— 已实现并通过实机验证（v0.1.4）
 
 Web 形态下页面与宿主同源，相对路径 `/dsh-prompt-adapt/api/...` 直接可用。
-桌面端页面的 origin 是 `dsh-app://app/`（`dsh-whale-widget/lib/index.js:586` 附近的实测注释：*"桌面壳的 index.html 是从安装包静态 dist 直接读盘的，永远不经过宿主的 renderIndex()"*），相对路径打不到宿主 webServer。
+桌面端页面的 origin 是 `dsh-app://app/`，相对路径打不到宿主 webServer。
 
-客户端为此留了一个口子：每次请求都重新读 `globalThis.__DSH_PROMPT_ADAPT__?.apiBase`（同类口子还有 `pollMs` 与 `hallUrl`）。宿主可以在桌面端通过**结构化 index 注入行**（`webserver/index-inject`，`kind:'global'`）塞进去：
-```js
-globalThis.__DSH_PROMPT_ADAPT__ = { apiBase: 'http://127.0.0.1:<port>/dsh-prompt-adapt/api' }
-```
-**我没有桌面端环境，所以这一条没实测**。
+现在的实现分三层：
+
+1. **宿主侧**：`apply()` 里生成一条**每次启动不同**的随机 token，通过
+   `webserver/index-inject` 的 `kind:'global'` 行注入
+   `globalThis.__DSH_PROMPT_ADAPT__ = { token, contract }`。webServer 就绪后再
+   把真实端口补成 `apiBase`（`http://127.0.0.1:<port>/dsh-prompt-adapt/api`）。
+   行必须在 apply 里同步注册 —— 桌面宿主启动时收集一次注入表，晚于那次收集
+   就永远进不了表（与 dsh-whale-widget 的 #152/#153/#154 是同一时序约束）。
+2. **客户端**：`resolveApiBase()` 依次读注入的 `apiBase` →
+   `__DSH_TRANSPORT__.streamBaseUrl` → 同源相对路径；每个请求带
+   `X-DSH-Prompt-Adapt-Token`。`requestJson()` 加了 8 秒硬超时，断连时显示
+   “未连接宿主 + 重试”，不再无限 loading。
+3. **HTTP 侧**：带正确 token 的请求走**凭据通道**直接放行（不再套同源判据）；
+   `OPTIONS` 预检在信任栅栏之前回 204，并返回
+   `Access-Control-Allow-Origin: *` / `Allow-Headers: content-type, x-dsh-prompt-adapt-token`。
+   没有 token 的跨源请求仍然是 403。
+
+**实机验证**：DSH 桌面端 0.2.1-rc.2，重启宿主后“设置 → AI 适配”能显示
+104 条画像 / 注入 23 条 / 未注入 81 条，饱和提示正常。
+
+⚠️ token 每次 apply 重新生成；插件热重载后需要刷新页面（新 token 在新注入表里）。
+没有 token 的旧页面会得到 403，这是有意的 fail-closed。
 
 ---
 
