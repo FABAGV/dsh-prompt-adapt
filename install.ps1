@@ -21,7 +21,7 @@
         .\install.ps1                      # 自动挑 profile（desktop 优先），装默认版本
         .\install.ps1 -Profile web         # 指定 profile
         .\install.ps1 -Tag main            # 装 main 分支最新代码（不依赖 release）
-        .\install.ps1 -File .\dsh-prompt-adapt-0.1.1.tgz   # 用本地 tgz
+        .\install.ps1 -File .\dsh-prompt-adapt-0.1.5.tgz   # 用本地 tgz
         .\install.ps1 -Uninstall           # 卸载（保留用户数据 ~/.dsh/prompt-adapt）
         .\install.ps1 -WhatIf              # 只打印会做什么
 #>
@@ -31,7 +31,7 @@ param(
     [string]$Profile,
 
     # GitHub release tag（默认桶里那个）；`main` = 直接用分支归档，不依赖 release
-    [string]$Tag = 'v0.1.1',
+    [string]$Tag = 'v0.1.5',
 
     # 下载通道：auto 依次尝试 ghproxy → ghfast → ghproxynet → 直连
     [ValidateSet('auto', 'ghproxy', 'ghfast', 'ghproxynet', 'direct')]
