@@ -5,6 +5,14 @@
 它从你自己的历史会话里归纳出一份「用户画像」，按预算裁剪后**注入系统提示** —— 于是每次开新会话，
 AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你这儿行不通。
 
+另外几件事：
+
+- **私人会话权限**：QQ 群 / QQ 私聊会话默认只能聊天，不拿来学习、拿不到你的画像，权限只能在
+  本机控制台或 DSH 设置页里改（见「私人会话权限」）。
+- **本机网页控制台**：`http://127.0.0.1:6710`，管理画像、权限、人格、技能和审计记录。
+- **人格**：以一段性格描述或一位 QQ 群友为目标生成说话风格，试聊、反馈、按反馈修订。
+- **学到的技能**：把你会话里摸索出来的做法整理成 DSH 技能，需要时才加载，不常驻上下文。
+
 ---
 
 ## 安装
@@ -131,6 +139,9 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
   "这条到底有没有进过系统提示"。
 - **工作笔记**：项目/工具/路径类事实单独一块，不占画像槽位，见下一节。
 
+自定义文本面板下面还有一张「私人会话权限」卡片：改 QQ 群 / QQ 私聊的默认工具权限（改成「完全」之前
+会要求确认），以及「打开控制台」按钮（拿一次性登录链接，在新窗口打开；没打开的话卡片里有链接可点）。
+
 ### 第一次打开时（还没有画像）
 
 界面不会只写一句"攒够发言后会自动生成"，而是给出**可执行的进度**（0.1.4 起）：
@@ -187,6 +198,90 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
 画像材料、四个信号、触发计数都不再把"AI 对 AI 说的话"当成用户发言。
 （界面点开单个会话的明细仍然全量，排障不受影响。）
 
+QQ 转进来的消息同理：dsh-whale-inurqq 投递的消息也是 `source.kind: 'user'`，说话的却是
+QQ 里的人。QQ 群 / QQ 私聊会话按权限策略整会话不参与学习（见下文「私人会话权限」）；
+工作区被改过名、认不出是 QQ 会话时，消息开头的「[来自 QQ …，发言人 …]」仍会把它们挡在材料之外。
+
+## 私人会话权限
+
+插件把每个会话分成四类，各自有一套规则：
+
+| 类别 | 怎么认出来 | 工具权限 | 用来学习画像和技能 | 注入画像 / 自定义文本 | 能看到的技能 |
+|---|---|---|---|---|---|
+| 你自己的会话 | 其余所有会话 | 完全 | 是 | 是 | 全部 |
+| 你派出的子代理 | `origin: 'subagent'`，父会话是你自己的 | 完全 | 否 | 否 | 全部 |
+| QQ 群 | 工作区目录名 `qq-group-<群号>`（dsh-whale-inurqq 建的） | 仅聊天 | 否 | 否 | 只看共享的 |
+| QQ 私聊 | 工作区目录名 `qq-private-<QQ号>` | 仅聊天 | 否 | 否 | 只看共享的 |
+
+QQ 会话派出的子代理跟随它的 QQ 会话。父会话在本地日志里找不到、宿主也答不上来时，
+按外部会话处理（宁严勿松）。
+
+三个工具权限等级：
+
+- **完全**：不加限制（DSH 自己的权限设置照常生效）。
+- **受限**：仅聊天的全部工具，加上 `read` / `write` / `edit` / `glob` / `grep` / `web_fetch`
+  等，但路径必须落在这个会话自己的工作区里，DSH 主目录和本插件状态目录永远读不到；
+  `web_fetch` 拒绝本机和内网地址。没有 shell，不能派子代理。
+- **仅聊天**：`skill`、`todo_write`、`web_search` 和 dsh-whale-inurqq 的 `qq_*` 工具。
+  `qq_send` / `qq_history` / `qq_memory` 只能作用于这个会话自己的 QQ 会话；
+  `qq_memory` 不能删除或置顶记忆，`qq_tasks` 不能取消任务。
+
+限制在 DSH 的工具管线里执行（`ctx.tools.guard`），工具调用还没开始就被拦下，不靠提示词。
+其他插件提供的工具在受限 / 仅聊天等级下默认拦下，确认安全后可以在控制台「额外放行的工具」里加。
+
+**谁能改**：只有本机网页控制台，或者 DSH 自己的设置页（要过 DSH 的登录校验）。模型没有任何工具
+能读写这套设置。每次修改和每次被拦下的工具调用都写进审计日志（`audit.jsonl`，同一个会话
+一分钟内对同一个工具的重复拒绝只记一次）。设置页里能改 QQ 群 / QQ 私聊的默认工具权限；
+按单个 QQ 会话、单个会话的设置（例如只给你自己的 QQ 私聊开「受限」，或把某个会话标成私密、
+不参与学习）在控制台里改。插件配置里的 `privacy.enforceTools: false` 会让门控只记不拦。
+
+## 本机控制台
+
+插件在 `http://127.0.0.1:6710`（`console.port`，`0` = 系统分配）起一个网页控制台，
+只监听 127.0.0.1，局域网里的其他设备连不上。页面：概览、画像、权限、人格、技能、审计。
+
+登录有两种方式：
+
+1. 在 DSH 的「设置 → AI 适配」里点「打开控制台」：拿到一个一次性登录链接（60 秒内有效、只能用一次）。
+2. 打开 `$DSH_HOME/prompt-adapt/console-key`，把里面的密钥粘贴到登录页。概览页可以「更换登录密钥」，
+   换完旧密钥和所有已登录的浏览器都会失效。
+
+请求校验：`Host` 必须是本机地址（挡 DNS rebinding）；登录态是 HttpOnly + SameSite=Strict 的
+cookie，12 小时不用就过期；写操作要带 CSRF 头并且来源一致；CSP 不允许内联脚本；
+一分钟内登录失败 10 次会暂停登录一分钟。
+
+## 人格
+
+在控制台「人格」页里，以一段性格描述，或一位 QQ 群友的说话方式为目标，生成一份风格说明，再慢慢调：
+
+- **模仿群友**：从 `$DSH_HOME/dsh-whale-inurqq/corpus/` 读这个群最近 `persona.corpusDays`（30）天的语料，
+  挑出这个人的发言和发言前别人刚说的那句，最多 `persona.maxSampleChars`（30000）字给模型。
+  发言少于 5 条不生成。创建前必须勾选「已征得对方同意」，注入的文本里写明"你不是本人、不冒充本人、
+  不编造本人的经历和隐私"。
+- **试聊**：在控制台里直接和某个版本聊（不进任何 DSH 会话），对回复点「像」或「不像」并写一句哪里不像。
+- **按反馈修订**：把攒下的反馈交给模型改出新版本；每个版本都留着，可以随时切回去。
+  模型建议的"人格记忆"先作为候选，你采用之后才会注入。
+- **用在哪**：绑定到你自己的全部会话、某个 QQ 会话或单个会话。同一个会话命中多个人格时，
+  单个会话的绑定优先，其次 QQ 会话，最后是"你自己的全部会话"。子代理不注入人格。
+
+人格作为单独的系统提示段注入（`dsh-prompt-adapt:persona`，`order: 31`），只给启用并绑定了的会话，
+写明不覆盖系统规则和权限。
+
+## 学到的技能
+
+插件会把你自己会话里摸索出来的做法整理成 DSH 技能，平时只有技能名和一句描述在上下文里，
+模型需要时才用 `skill` 工具加载全文：
+
+- **材料**：只用你自己的、允许学习的会话（QQ 会话、子代理、标成私密的会话都不用），
+  而且至少有 `skills.minToolCalls`（8）次工具调用、空闲 10 分钟以上。给模型的是摘要：你的请求、
+  工具名和简短参数、失败、最后一条回复；密钥、令牌、邮箱、手机号、用户目录名、IP 在发出前脱敏。
+- **判断**：模型给每个候选打四项分（可复用、已验证、具体、安全，1–5 分），四项都不低于
+  `skills.autoActivateScore`（4）才直接启用，否则先当候选，等你在控制台里启用。
+- **挂到 DSH**：技能来源名是 `prompt-adapt`，技能名统一带 `learned-` 前缀。默认只给你自己的会话；
+  点「共享给 QQ 会话」后 QQ 会话也能加载。
+- **自动整理**：每 `skills.minIntervalHours`（24）小时最多一次，攒够 `skills.minNewSessions`（3）个
+  新会话才跑；控制台里可以手动「现在整理」。你改过的技能不会被自动整理覆盖，改之前的版本留在历史里。
+
 ### 注入落账与新生试用位
 
 每一版画像**真正进了 system prompt** 的条目 id 与累计次数会写进
@@ -240,7 +335,28 @@ dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases
     inject:
       budgetTokens: 1500       # 注入预算（估算 token）
       maxPinned: 10            # 最多置顶多少条
+    privacy:
+      enforceTools: true       # 按会话类别限制工具（关掉后只记不拦）
+      defaultExternalTier: chat  # QQ 会话默认的工具权限：chat / safe / full
+      injectProfileIntoSubagents: false
+      requireDshAuth: true     # 设置页接口要求 DSH 自己的登录校验
+    console:
+      enabled: true
+      port: 6710               # 0 = 系统分配
+    persona:
+      corpusDays: 30           # 模仿群友时读最近多少天的 QQ 语料
+      maxSampleChars: 30000
+    skills:
+      enabled: true
+      autoMine: true
+      minIntervalHours: 24
+      minNewSessions: 3
+      autoActivateScore: 4     # 四项自评都不低于它才直接启用；6 = 一律先当候选
 ```
+
+人格和技能默认跟随画像生成用的 provider / model，可以在 `persona.provider` / `persona.model`、
+`skills.provider` / `skills.model` 里单独指定。按会话、按 QQ 会话的权限覆盖项不在插件配置里，
+在控制台里改（落在 `privacy.json`）。
 
 完整字段见 [`lib/schema.js`](./lib/schema.js)（每个字段都有中文说明）。
 
@@ -267,7 +383,17 @@ POST /dsh-prompt-adapt/api/entry/seal         {id?, claim}    封印
 POST /dsh-prompt-adapt/api/entry/delete       {id?, claim}    删除
 POST /dsh-prompt-adapt/api/entry/unpin        {key}           取消置顶
 POST /dsh-prompt-adapt/api/entry/unseal       {key}           从垃圾桶恢复
+GET  /dsh-prompt-adapt/api/privacy            权限策略（默认值、覆盖项、各类别生效规则）
+PUT  /dsh-prompt-adapt/api/privacy            {overrides}     改权限（只认 DSH 的登录校验）
+POST /dsh-prompt-adapt/api/console/ticket     一次性控制台登录链接（只认 DSH 的登录校验）
 ```
+
+宿主带 `connection` 服务时（桌面端与 dsh web 都带），每个请求都要过 DSH 自己的登录校验：
+桌面端的设置页请求由主进程转发并附上 DSH 的登录 cookie，dsh web 是同源请求。没有这项服务的宿主
+退回只认本机地址（`Host` 和对端地址都必须是本机）。`PUT /privacy` 和 `POST /console/ticket`
+没有退路，必须过 DSH 的登录校验。
+
+控制台自己的接口在 `http://127.0.0.1:6710/api/*`，只给控制台页面用，需要控制台登录。
 
 ⚠️ 前缀匹配要求 `${prefix}/`，所以**不要**直接请求裸的 `/dsh-prompt-adapt/api`
 （那会落到宿主的 fallback）。用 `GET /dsh-prompt-adapt/api/` 或任一具体端点。
@@ -280,11 +406,18 @@ POST /dsh-prompt-adapt/api/entry/unseal       {key}           从垃圾桶恢复
 ├─ cursor.json                    帧偏移水位
 ├─ plain/<sha1>.jsonl             已解压会话明文缓存
 ├─ profile-history/               每次生成的画像快照，只增不删
+├─ privacy.json                   私人会话权限的覆盖项（读不懂时留档并按默认值运行）
+├─ audit.jsonl                    审计：权限修改、被拦下的工具调用、人格与技能的变化（超过 512 KB 轮转）
+├─ personas.json                  人格：版本、反馈、记忆、绑定
+├─ skills.json                    学到的技能与整理记录
+├─ console-key                    控制台登录密钥
 └─ plugin.log                     日志镜像
 ```
 
-**没有任何数据离开这台机器。** 插件不发起网络请求；唯一的出站调用是你自己配置的
-LLM provider（`ctx.llm.stream()`），且只发送**用于归纳画像的会话片段**，不发送原始日志文件。
+**除了你配置的模型，没有数据离开这台机器。** 插件不发起网络请求；出站调用只有你自己配置的
+LLM provider（`ctx.llm.stream()`），发送的是：归纳画像用的你的发言片段；生成或修订人格时，
+被模仿的那位群友的 QQ 发言样本（只在你点「生成」「修订」时）；整理技能用的脱敏会话摘要；
+控制台里的试聊。不发送原始日志文件。控制台是只监听 127.0.0.1 的入站服务，不发请求。
 
 ## 开发与测试
 
@@ -311,8 +444,16 @@ node test/inject-budget.mjs       # 预算分配与极端场景
 node test/marks-guard.mjs         # 置顶/封印/删除的语义与跨版本效果
 node test/profile-delta-guard.mjs # 差量拼装与截断抢救
 node test/extract-bugfix.mjs      # 提取层增量与游标
+node test/privacy.mjs             # 会话分类、工具门控、覆盖项校验、审计
+node test/persona-skills.mjs      # 人格仓库、QQ 语料、技能整理与可见范围、脱敏
+node test/profile-safety.mjs      # 画像生成的安全修复（漏写不删光、id 分配、正文清洗、置顶保护）
+node test/console-e2e.mjs         # 假 DSH 环境里的完整链路：控制台登录、权限、人格、技能、注入隔离
 node tools/calibrate.mjs          # 与宿主真实路由的集成自检
+node tools/console-preview.mjs    # 用合成数据起一个控制台看界面（不碰 ~/.dsh，不调真实模型）
 ```
+
+走 `apply()` 的测试会启动本机控制台；不想占端口时设 `DSH_PROMPT_ADAPT_CONSOLE=off`（CI 就是这样跑的，
+`test/console-e2e.mjs` 自己用随机端口）。
 
 `test/parity.mjs` 需要宿主那支 `dsh-session-persistence-jsonl` 的实现当标尺，
 按 `$DSH_HOME`（默认 `~/.dsh`）自动探测各 profile 的 `node_modules`；
@@ -323,21 +464,26 @@ node tools/calibrate.mjs          # 与宿主真实路由的集成自检
 > （CI、新机器）它会自动生成一份结构相同的**合成语料**继续跑完全部断言，
 > 并在输出第一行明确写「本次用合成语料」——不静默跳过，也不冒充真实数据。
 
-**全部测试是绿的**（最后一次实测）：
+**最后一次实测**（2026-10-29，隔离的临时 HOME，CI 跑的那 25 个文件）：1269 条断言全部通过，其中
 
 ```
-parity              PASS —— 230 个文件 / 71180 帧与宿主实现逐帧一致（不一致 0）
-selftest            142 通过 / 0 失败
-httptest            54 通过 / 0 失败
-loadtest            44 通过 / 0 失败
-state-hardening     33 通过 / 0 失败
-extract-bugfix      12 通过 / 0 失败
-profile-delta-guard 22 通过 / 0 失败
-inject-budget       54 通过 / 0 失败
-marks-guard         70 通过 / 0 失败
-client-marks-render 53 通过 / 0 失败
-calibrate           147 通过 / 0 失败
+selftest            144 通过 / 0 失败
+console-e2e         118 通过 / 0 失败
+persona-skills       93 通过 / 0 失败
+privacy              88 通过 / 0 失败
+marks-guard          70 通过 / 0 失败
+plan-cache           61 通过 / 0 失败
+tick-signals         60 通过 / 0 失败
+scan-tail            60 通过 / 0 失败
+httptest             54 通过 / 0 失败
+http-trust           48 通过 / 0 失败
+inject-budget        48 通过 / 0 失败
+loadtest             45 通过 / 0 失败
+profile-safety       34 通过 / 0 失败
 ```
+
+`test/parity.mjs`、`tools/calibrate.mjs` 要对着本机真实的 DSH 安装跑，这一轮没有重跑
+（上一次的结果：parity 230 个文件 / 71180 帧逐帧一致，calibrate 147 通过）。
 
 设计意图、接口查证记录、以及**已知的未完成/不确定项**见
 [IMPLEMENTATION.md](./IMPLEMENTATION.md) 与 [UI-IMPLEMENTATION.md](./UI-IMPLEMENTATION.md)。
@@ -352,6 +498,10 @@ calibrate           147 通过 / 0 失败
 | 设置页显示「未连接宿主」 | 先确认插件装进了**当前 profile**；桌面端装完要**刷新页面**。再确认宿主 HTTP 路由前缀是 `/dsh-prompt-adapt/api`（界面每次请求都带这个前缀）。 |
 | 画像更新了，但界面没变 | 生成在后台跑，界面每 3 秒轮询一次；还在跑时按钮显示「生成中…」。超过 5 分钟仍未更新，看 `lastRun.error`。 |
 | 删除的条目又回来了 | 这是设计：**删除**不禁止模型重新归纳；要永久挡住请用**封印**。 |
+| 「打开控制台」没反应 / 卡片里写控制台没有启动 | 看 `plugin.log` 里 `[console]` 开头的行：常见是端口 6710 被占用，改 `console.port`（`0` = 系统分配）。也可以直接用 `console-key` 文件里的密钥登录。 |
+| 忘了控制台密钥 / 担心密钥泄露 | 密钥在 `$DSH_HOME/prompt-adapt/console-key`。登录后在概览页点「更换登录密钥」，旧密钥和所有已登录的浏览器立即失效。 |
+| QQ 里的机器人说"不能使用某个工具" | 这是权限门控在起作用：控制台「审计」页能看到是哪个会话、哪个工具、什么等级。确实需要时，在「权限」页给那个 QQ 会话单独调高等级，或把工具加到「额外放行的工具」。 |
+| QQ 会话里的话出现在画像里 | 不应该发生：先在控制台「权限 → 单个会话」里确认那个会话被认成了什么类别。被认成"你自己的会话"，多半是工作区目录名不是 `qq-group-*` / `qq-private-*`。 |
 
 ## 已知限制
 
@@ -367,7 +517,14 @@ calibrate           147 通过 / 0 失败
 - **封印按文本精确匹配**：中文同义改写认不出来（实测相似度分不开同一条换说法与两条不同结论），
   所以改写过的封印条目会漏认 —— 由提示词那道概率性防线兜。
 - **多进程共用 `DSH_HOME` 时是「后写覆盖先写」**：整份状态由内存写出，
-  两个宿主进程同时跑会让设置页的编辑被静默回滚。
+  两个宿主进程同时跑会让设置页的编辑被静默回滚。权限、人格、技能三个文件同理；
+  第二个进程的控制台会因为端口被占用起不来（`plugin.log` 里有警告），可以给它配 `console.port: 0`。
+- **QQ 会话靠工作区目录名认**：`qq-group-<群号>` / `qq-private-<QQ号>` 是 dsh-whale-inurqq 建的。
+  工作区被挪到别的目录名下的 QQ 会话会被当成你自己的会话：学习侧还有消息前缀兜底，工具门控没有。
+- **工具门控只认得 DSH 内置工具和 `qq_*` 工具**：其他插件的工具在受限 / 仅聊天等级下一律拦下，
+  要用就在控制台里加到「额外放行的工具」。受限等级只检查带路径参数的那几个工具。
+- **同一用户下的其他进程**本来就能直接改 `privacy.json` 和 `state.json`，这一层管不到。
+- **人格像不像取决于语料量**：发言少于 5 条不生成；样本按时间取最近的，不保证覆盖这个人的各种说话场景。
 
 ## 许可证
 

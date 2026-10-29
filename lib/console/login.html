@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>登录 · prompt-adapt 控制台</title>
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body class="login">
+  <main class="login-card">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">pa</span>
+      <div>
+        <div class="brand-title">prompt-adapt 控制台</div>
+        <div class="brand-sub">只接受这台电脑上的访问</div>
+      </div>
+    </div>
+    <!--MESSAGE-->
+    <form method="post" action="/login" class="login-form">
+      <label for="key">登录密钥</label>
+      <input id="key" name="key" type="password" autocomplete="current-password" required autofocus spellcheck="false">
+      <button class="btn btn-primary" type="submit">登录</button>
+    </form>
+    <div class="login-help">
+      <p>两种登录方式：</p>
+      <ol>
+        <li>在 DSH 的「设置 → AI 适配」里点「打开控制台」，会带一次性登录链接直接进来。</li>
+        <li>打开这个文件，把里面的密钥粘贴到上面：<code><!--KEYFILE--></code></li>
+      </ol>
+      <p class="muted small">密钥只保存在这台电脑上。控制台只监听 127.0.0.1，局域网里的其他设备连不上。</p>
+    </div>
+  </main>
+</body>
+</html>

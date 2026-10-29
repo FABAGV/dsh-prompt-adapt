@@ -982,6 +982,7 @@ console.log('='.repeat(72))
 console.log('13. 只读保证 + 模式 3 的边界')
 console.log('='.repeat(72))
 {
+  const stripCommentLines = (text) => text.split('\n').filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n')
   const libDir = path.join(import.meta.dirname, '..', 'lib')
   const writeCalls = /(writeFileSync|appendFileSync|renameSync|unlinkSync|mkdirSync|rmSync|createWriteStream)\s*\(/
   /**
@@ -997,6 +998,11 @@ console.log('='.repeat(72))
     ['dir', '状态目录 / plain / profile-history（StateStore.#ensureDirs）'],
     ['this.stateFile', 'state.json'],
     ['this.cursorFile', 'cursor.json'],
+    ['this.dir', '权限 / 人格 / 技能仓库的目录（index.js 传入的是状态目录）'],
+    ['this.file', 'privacy.json 读不懂时原样留档（同目录 rename）'],
+    ['this.auditFile', '审计日志 audit.jsonl（状态目录下，超长时同目录轮转）'],
+    ['this.stateDir', '控制台登录密钥所在的状态目录'],
+    ['this.keyFile', '控制台登录密钥 console-key（状态目录下）'],
   ])
   const offenders = []
   const used = new Set()
@@ -1037,7 +1043,15 @@ console.log('='.repeat(72))
    * `lib/client.js` 是 UI 代理的文件（它会 fetch 自己的后端接口），显式排除。
    */
   const HOST_FILES = ['index.js', 'schema.js', 'frames.js', 'sessions.js', 'signals.js',
-                      'profile.js', 'state.js', 'hall.js', 'http.js']
+                      'profile.js', 'state.js', 'hall.js', 'http.js', 'privacy.js', 'llm.js',
+                      'jobs.js', 'qq-corpus.js', 'persona.js', 'skills.js', 'redact.js',
+                      'workbench.js', 'console-api.js']
+  // 控制台服务器是唯一引入 node:http 的宿主文件：它只能被动监听本机，不能往外发请求。
+  const consoleSource = stripCommentLines(fs.readFileSync(path.join(libDir, 'console-server.js'), 'utf8'))
+  check('控制台只监听 127.0.0.1（地址写死，没有配置项能改）',
+    /\.listen\(this\.wantedPort, '127\.0\.0\.1'/.test(consoleSource) && !/0\.0\.0\.0/.test(consoleSource))
+  check('控制台服务器不发出站请求',
+    !/\bfetch\s*\(|http\.(request|get)\s*\(|from ['"]node:https['"]/.test(consoleSource))
   const networkOffenders = []
   for (const file of HOST_FILES) {
     const source = fs.readFileSync(path.join(libDir, file), 'utf8')

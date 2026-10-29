@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>prompt-adapt 控制台</title>
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">pa</span>
+        <div>
+          <div class="brand-title">prompt-adapt</div>
+          <div class="brand-sub">本机控制台</div>
+        </div>
+      </div>
+      <nav id="nav" class="nav" aria-label="控制台页面"></nav>
+      <div class="sidebar-foot">
+        <div id="session-info" class="muted small"></div>
+        <button id="logout" class="btn btn-ghost btn-small" type="button">退出登录</button>
+      </div>
+    </aside>
+    <main id="view" class="view" tabindex="-1">
+      <p class="muted">正在载入…</p>
+    </main>
+  </div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>

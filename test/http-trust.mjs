@@ -241,16 +241,19 @@ console.log('='.repeat(72))
   })
   check('(d) 只差一个端口（同机不同源）也 → 403', portOnly.status === 403, `status=${portOnly.status}`)
 
-  // 反向证据：这一条判据比的是**收到的那两个头**，不是"Host 必须是 loopback"。
-  // （插件没有 trustedHosts 配置，也不该假定只在本机服务 —— 见模块顶部"挡不住谁"。）
+  // DNS rebinding：页面在别的域名下、DNS 指向 127.0.0.1，Origin 与 Host 天然一致。
+  // 宿主没有 connection 服务时（这个测试就是），Host 必须是本机地址。
   const custom = await raw({
     path: '/state',
     headers: { host: 'harness.internal', origin: 'http://harness.internal', 'sec-fetch-site': 'same-origin' },
   })
-  check('(d) Host=harness.internal 且 Origin 与之一致 → 200（判据是同源比对，不是 loopback 白名单）',
-    custom.status === 200, `status=${custom.status}`)
+  check('(d) Host=harness.internal 且 Origin 与之一致 → 403（挡住 DNS rebinding）',
+    custom.status === 403, `status=${custom.status}`)
   check('(d) 自定义 Host 确实透传到了 handler',
     seen.at(-1)?.host === 'harness.internal', `host=${seen.at(-1)?.host}`)
+  check('(d) 403 的文案不回显请求头', !custom.text.includes('harness.internal'), custom.text)
+  const localhostName = await raw({ path: '/state', headers: { host: `localhost:${port}` } })
+  check('(d) Host=localhost:<port> 照常放行', localhostName.status === 200, `status=${localhostName.status}`)
 }
 
 console.log('')
@@ -365,6 +368,27 @@ console.log('='.repeat(72))
   })
   check('(g) 跨站请求打未知路径也先吃 403（栅栏在最前面，早于路由分发）',
     unknown.status === 403, `status=${unknown.status}`)
+}
+
+console.log('')
+console.log('='.repeat(72))
+console.log('H. 权限策略与控制台票据：没有 DSH 登录校验时只读')
+console.log('='.repeat(72))
+{
+  const read = await raw({ path: '/privacy', headers: { host: AUTHORITY } })
+  check('(h) GET /privacy 本机可读', read.status === 200 && read.json?.policy?.effective?.['qq-group']?.tier === 'chat', `status=${read.status}`)
+  const write = await raw({
+    method: 'PUT',
+    path: '/privacy',
+    headers: { host: AUTHORITY },
+    body: JSON.stringify({ overrides: { classes: { 'qq-group': { tier: 'full' } } } }),
+  })
+  check('(h) 没有 DSH 登录校验时 PUT /privacy → 403', write.status === 403, `status=${write.status}`)
+  const after = await raw({ path: '/privacy', headers: { host: AUTHORITY } })
+  check('(h) 被拒的修改没有生效', after.json?.policy?.effective?.['qq-group']?.tier === 'chat')
+  const ticket = await raw({ method: 'POST', path: '/console/ticket', headers: { host: AUTHORITY } })
+  check('(h) 没有 DSH 登录校验时拿不到控制台票据 → 403', ticket.status === 403, `status=${ticket.status}`)
+  check('(h) 403 的文案指向 DSH 设置页或本机控制台', /DSH|控制台/.test(write.json?.error ?? ''), write.text)
 }
 
 console.log('')

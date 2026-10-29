@@ -37,7 +37,10 @@ jobs:
       # parity 需要本机真实的会话语料当标尺（它在找不到标尺时**判失败而不是跳过**，
       # 这是对的：CI 上没有语料就只能不跑，而不是假装比对通过）。
       # inspect-signals / verify-incremental 是排障脚本，会读写真实 $DSH_HOME。
+      # 走 apply() 的测试不需要本机控制台；需要它的 console-e2e 自己用随机端口启动。
       - name: 跑测试
+        env:
+          DSH_PROMPT_ADAPT_CONSOLE: 'off'
         run: |
           set -e
           for file in test/*.mjs; do

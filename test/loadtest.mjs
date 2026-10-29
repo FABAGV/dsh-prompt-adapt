@@ -123,8 +123,10 @@ console.log('='.repeat(72))
   }
   check('apply() 没抛异常', threw === null, threw?.message)
 
-  check('systemPrompt.section() 被调用了一次', sections.length === 1, `${sections.length} 次`)
-  const section = sections[0]
+  check('systemPrompt.section() 注册了画像段与人格段两段', sections.length === 2, `${sections.length} 次`)
+  check('人格段单独注册、紧跟画像段、不做变量插值',
+    sections.some(item => item.name === 'dsh-prompt-adapt:persona' && item.order === 31 && item.interpolate === false))
+  const section = sections.find(item => item.name === 'dsh-prompt-adapt:effective-profile')
   check('注册名正确', section?.name === 'dsh-prompt-adapt:effective-profile', String(section?.name))
   check('order 是 30（在人格前缀之后、工具说明之前）', section?.order === 30, String(section?.order))
   check('text 是函数（每步求值，不是静态串）', typeof section?.text === 'function')
