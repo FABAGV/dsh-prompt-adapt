@@ -61,7 +61,7 @@ AI 不用你重新交代一遍就知道你的偏好、以及哪些做法在你�
 在插件页里填这个**发布产物地址**（版本化、内容不变）：
 
 ```
-https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.4/dsh-prompt-adapt-0.1.4.tgz
+https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.2.0/dsh-prompt-adapt-0.2.0.tgz
 ```
 
 装完**刷新页面**（插件在宿主启动时 `apply()` 一次；桌面端热加载有时不重跑）。
@@ -69,7 +69,7 @@ https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.4/dsh-prompt-a
 ### C. CLI（`web` / `tui` 等非桌面 profile）
 
 ```bash
-dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.1.4/dsh-prompt-adapt-0.1.4.tgz
+dsh plugin --profile web add https://github.com/FABAGV/dsh-prompt-adapt/releases/download/v0.2.0/dsh-prompt-adapt-0.2.0.tgz
 ```
 
 **不要**用 `github:FABAGV/dsh-prompt-adapt`：这种 spec 形式下 pnpm 会先跑 `git ls-remote`，
@@ -301,6 +301,16 @@ cookie，12 小时不用就过期；写操作要带 CSRF 头并且来源一致�
 改写沿用旧 id 不受影响；旧画像已经超过 44 条时**不强制瘦身**（那需要档案层，
 不能静默删用户数据），只停止继续增长。
 
+### 饱和守卫
+
+画像达到软上限后，如果**连续两轮**生成都是 0 新增 / 0 删除 / 0 改写，自动生成会
+暂停并在 `lastRun.reason` 写明原因 —— 再跑一次也不会改变任何东西，只会白烧一次
+LLM 调用（本机实测 v44–v47 连续 4 轮 0 变更仍按 12 条/3 会话触发）。设置页在
+模式 1 卡片里显示“画像已达增长上限（当前 N 条）”。
+
+用户删除 / 封印 / 取消置顶后，`zeroChangeStreak` 清零，自动生成重新尝试；
+手动「重新生成」不受守卫限制。
+
 ### 工作笔记（项目事实不占画像槽位）
 
 画像条目只写**用户本人**的稳定特质/偏好/纪律；项目、工具、路径、账号、仓库类事实
@@ -439,6 +449,8 @@ node test/parity.mjs              # 帧扫描 vs 宿主自己的实现，逐帧�
 node test/selftest.mjs            # 核心不变式（差量契约、截断抢救、删除守卫）
 node test/loadtest.mjs            # 真实 cordis Context 上跑 apply()
 node test/httptest.mjs            # 真 HTTP server + fetch 打全部端点
+node test/http-trust.mjs          # 来源栅栏 + 桌面端 token/CORS 预检
+node test/saturation-guard.mjs    # 画像饱和守卫与 zeroChangeStreak
 node test/state-hardening.mjs     # 落盘原子性、损坏文件留档、类型兜底
 node test/inject-budget.mjs       # 预算分配与极端场景
 node test/marks-guard.mjs         # 置顶/封印/删除的语义与跨版本效果
@@ -464,7 +476,7 @@ node tools/console-preview.mjs    # 用合成数据起一个控制台看界面�
 > （CI、新机器）它会自动生成一份结构相同的**合成语料**继续跑完全部断言，
 > 并在输出第一行明确写「本次用合成语料」——不静默跳过，也不冒充真实数据。
 
-**最后一次实测**（2026-10-29，隔离的临时 HOME，CI 跑的那 25 个文件）：1269 条断言全部通过，其中
+**最后一次实测**（2026-10-29，隔离的临时 HOME，CI 跑的那 26 个文件）：1294 条断言全部通过，其中
 
 ```
 selftest            144 通过 / 0 失败
@@ -476,10 +488,11 @@ plan-cache           61 通过 / 0 失败
 tick-signals         60 通过 / 0 失败
 scan-tail            60 通过 / 0 失败
 httptest             54 通过 / 0 失败
-http-trust           48 通过 / 0 失败
+http-trust           57 通过 / 0 失败
 inject-budget        48 通过 / 0 失败
 loadtest             45 通过 / 0 失败
 profile-safety       34 通过 / 0 失败
+saturation-guard     15 通过 / 0 失败
 ```
 
 `test/parity.mjs`、`tools/calibrate.mjs` 要对着本机真实的 DSH 安装跑，这一轮没有重跑

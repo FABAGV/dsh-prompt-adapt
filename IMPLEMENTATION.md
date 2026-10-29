@@ -1675,6 +1675,52 @@ export function isHallConfigured(value = PROMPT_HALL_URL) { … }
 模型仍可能无视提示词把项目事实写进 `entries`，那部分会占槽位；迁移只认 3 条铁证，
 其余项目条目要用户手动封印/后续再做归档。
 
+### 8.11 桌面端可读 + 饱和守卫（v0.1.4）
+
+**问题**
+
+1. 桌面壳页面从 `dsh-app://app/` 加载，相对路径打不到插件 webServer；设置页
+   永远停在“正在读取宿主状态…”，实测显示 0 条，而同一时刻 `/state` 有 104 条。
+   `requestJson()` 没有超时，fetch 不 settle 时既不报错也不重试。
+2. 画像到 104 条后连续多轮 0 变更，仍按 12 条发言/3 个会话触发，每次白烧
+   30–40 秒 LLM 调用；设置页只显示“上次生成”，没有“画像已满”的显式提示。
+
+**改动**
+
+- 宿主 `apply()` 生成每次启动不同的 `desktopAuthToken`，同步注册
+  `webserver/index-inject` 的 global 行 `__DSH_PROMPT_ADAPT__ = { token, contract }`；
+  webServer 就绪后把真实 `apiBase`（`http://127.0.0.1:<port>/dsh-prompt-adapt/api`）
+  原地补进同一个 value 对象。
+- HTTP 路由新增**凭据通道**：`X-DSH-Prompt-Adapt-Token` 正确即放行，绕过
+  `sec-fetch-site`/Origin 同源判据；错误 token 直接 403；没有 token 的请求
+  仍走原栅栏。新增 `OPTIONS` 预检（204 + CORS 头）和所有响应的
+  `Access-Control-Allow-Origin: *`。
+- 客户端 `resolveApiBase()` 增加 `__DSH_TRANSPORT__.streamBaseUrl` 回退；
+  每个请求带 token 头；`requestJson()` 加 8 秒 `AbortController` 超时，
+  超时文案进入现有“未连接宿主 + 重试”错误态。
+- `/state` 新增 `profileCapacity = { entries, softCap, saturated, zeroChangeStreak }`；
+  生成成功时按 diff 维护 `state.zeroChangeStreak`（三项全 0 才累加），
+  `markEntry()` / `clearMark()` / `clearProfile()` 清零。
+- `maybeGenerate()` 新增饱和守卫：`profileSaturated() && zeroChangeStreak >= 2`
+  时跳过一次自动生成，写 `lastRun.reason`；`force`（手动重新生成）不受限。
+- 设置页模式 1 卡片显示“画像已达增长上限（当前 N 条）”，连续 0 变更时追加
+  “已连续 N 轮没有变化，自动生成暂时停止”。
+
+**测试**
+
+- `test/http-trust.mjs` 新增 9 条：global 注入行存在、token 非空、OPTIONS 204、
+  CORS 头、正确 token 200、无 token 403、错误 token 403。
+- 新增 `test/saturation-guard.mjs`（15 条）：饱和时 0 次 LLM、原因落盘、
+  `profileCapacity` 暴露、pin 清零后重新生成、两轮 0 变更后再次暂停。
+- `test/client-marks-render.mjs` 新增饱和提示断言；`verify-incremental.mjs`
+  因 `SessionScanner` 未传 log 而崩，构造器补了 no-op logger 兜底。
+
+**实机验证**：DSH 桌面端 0.2.1-rc.2 重启后，设置页显示 104 条 / 注入 23 条 /
+未注入 81 条 / 已删除 6 条，饱和提示正常。
+
+⚠️ token 每次 apply 重新生成；插件热重载后刷新页面即可。没有 token 的旧页面
+会 403，这是 fail-closed。
+
 ---
 
 ## 九、我运行过的命令

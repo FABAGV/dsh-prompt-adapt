@@ -128,6 +128,8 @@ const HOST_STATE = {
 		overBudget: false,
 		annotation: '（本次注入 2/6 条）',
 	},
+	// 画像饱和提示的输入（真实宿主 0.1.4+ 才有的字段；老宿主没有它就不显示）。
+	profileCapacity: { entries: 6, softCap: 44, saturated: true, zeroChangeStreak: 2 },
 	running: false,
 }
 
@@ -394,6 +396,9 @@ check('账本徽标：已注入版本数',
 		text.includes(translate('prompt-adapt', 'ledgerSeen', { n: 1 })))
 check('账本徽标：从未注入至少 4 条',
 	(text.match(new RegExp(translate('prompt-adapt', 'ledgerNever'), 'g')) || []).length >= 4)
+check('画像饱和提示可见（增长上限 + 连续 0 变更）',
+	text.includes(translate('prompt-adapt', 'autoSaturated', { n: 6 })) &&
+		text.includes(translate('prompt-adapt', 'autoSaturatedStreak', { n: 2 })))
 check('工作笔记可见（不占画像槽位）',
 	text.includes(translate('prompt-adapt', 'workingNotesHeading', { n: 1 })) &&
 		text.includes(translate('prompt-adapt', 'workingNotesHint')) &&
